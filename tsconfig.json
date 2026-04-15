@@ -1,0 +1,81 @@
+import { redirect } from 'next/navigation';
+import { prisma } from '@/lib/prisma';
+import { isLoggedIn } from '@/lib/auth';
+import { AnalyzePanel } from './components/AnalyzePanel';
+import { LogoutButton } from './components/LogoutButton';
+import { MetricCard } from './components/MetricCard';
+import { TrendsChart } from './components/TrendsChart';
+import { average, formatShortDate, trend } from '@/lib/format';
+
+export default async function HomePage() {
+  if (!isLoggedIn()) redirect('/login');
+
+  const records = await prisma.healthRecord.findMany({ orderBy: { date: 'asc' } });
+  const latest = records.at(-1);
+  const last7 = records.slice(-7);
+  const prev7 = records.slice(-14, -7);
+
+  const last7Steps = Math.round(average(last7.map((item) => item.steps || 0)));
+  const prev7Steps = Math.round(average(prev7.map((item) => item.steps || 0)));
+  const stepTrend = trend(last7Steps, prev7Steps);
+  const avgSleep = average(last7.map((item) => item.sleepHours || 0));
+  const avgRhr = average(last7.map((item) => item.restingHeartRate || 0));
+
+  const chartData = records.slice(-14).map((item) => ({
+    label: formatShortDate(item.date),
+    steps: item.steps || 0,
+    sleepHours: item.sleepHours || 0,
+    restingHeartRate: item.restingHeartRate || 0,
+  }));
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="label">Fitness AI v2</div>
+          <h1 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Tu panel listo para usar esta semana</h1>
+          <p className="mt-2 max-w-2xl text-slate-400">
+            Sincroniza Apple Health desde el iPhone, revisa el histórico y obtén recomendaciones prácticas.
+          </p>
+        </div>
+        <LogoutButton />
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard title="Pasos" value={`${latest?.steps ?? 0}`} subtitle={`Último día · ${stepTrend >= 0 ? '+' : ''}${stepTrend.toFixed(0)}% vs semana previa`} />
+        <MetricCard title="Sueño medio" value={`${avgSleep.toFixed(1)} h`} subtitle="Media últimos 7 días" />
+        <MetricCard title="FC reposo" value={`${avgRhr.toFixed(0)} bpm`} subtitle="Media últimos 7 días" />
+        <MetricCard title="Carga" value={`${latest?.trainingLoad ?? 0}`} subtitle="Estimación del último día" />
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <TrendsChart data={chartData} />
+        <AnalyzePanel payload={records.slice(-30)} />
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className="card p-5">
+          <div className="label">Estado rápido</div>
+          <h2 className="mt-1 text-xl font-semibold text-white">Lectura de hoy</h2>
+          <div className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
+            <p>• Pasos de hoy: <strong>{latest?.steps ?? 0}</strong></p>
+            <p>• Sueño del último registro: <strong>{latest?.sleepHours ?? 0} h</strong></p>
+            <p>• Entrenos del último registro: <strong>{latest?.workouts ?? 0}</strong></p>
+            <p>• Calorías activas: <strong>{latest?.caloriesActive ?? 0}</strong></p>
+          </div>
+        </div>
+
+        <div className="card p-5">
+          <div className="label">Qué hacer ahora</div>
+          <h2 className="mt-1 text-xl font-semibold text-white">Checklist de despliegue</h2>
+          <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-300">
+            <li>Configura `.env.local` con contraseña, token y clave de OpenAI.</li>
+            <li>Ejecuta `npx prisma db push` y luego `npm run db:seed`.</li>
+            <li>Sube la web a Vercel o ejecútala localmente.</li>
+            <li>Pega la URL de `/api/data` y el token en la app puente de iPhone.</li>
+          </ol>
+        </div>
+      </section>
+    </main>
+  );
+}
