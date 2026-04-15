@@ -1,6 +1,0 @@
-import { clearLoginCookie } from '@/lib/auth';
-
-export async function POST() {
-  clearLoginCookie();
-  return Response.json({ ok: true });
-}
